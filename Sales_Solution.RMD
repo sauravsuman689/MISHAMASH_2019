@@ -1,0 +1,651 @@
+---
+title: "HACKATHON UNILIVER - DEEP TECH ML (PROBLEM STATEMENT 3)"
+author: "Saurav Suman,Anurag Kedia,Dinesh D(Group - ThePredictors)"
+output: html_notebook
+---
+
+#### Read the training dataset (Training-Data-Sets.xlsx)
+```{r}
+library(readxl)
+sales_data <- read_excel("F:/Saurav/Study/GL-Class/Hackathon/Uniliver/Training-Data-Sets.xlsx")
+
+head(sales_data)
+```
+
+#### Check the dimension of the dataset(rows and columns)
+```{r}
+dim(sales_data)
+```
+
+#### Check for the NA values in the dataset
+```{r}
+sapply(sales_data,function(x){sum(is.na(x))})
+```
+
+#### Check the summary of the dataset
+```{r}
+summary(sales_data)
+```
+
+#### Check the datatype of the dataset
+```{r}
+str(sales_data)
+```
+
+#### Plot the boxplot to check the outliers in the target variable - EQ
+```{r}
+library(ggplot2)
+ggplot(data=sales_data, aes(EQ, fill=EQ)) + geom_boxplot(colour="Black")
+```
+
+## Box plot of each independent variable ( Univariate Analysis )
+```{r}
+for (i in 3:ncol(sales_data))
+{
+ boxplot(sales_data[,i],horizontal = TRUE, border = 'red',
+         xlab = "Value",main = colnames(sales_data[i]))
+    
+}
+```
+
+#### Remove the 1st column "Da"y from the day as it's not required for regression
+```{r}
+sales_data_train <- sales_data[,-1]
+head(sales_data_train)
+```
+
+#### Scale the data to bring it to standard normal scale
+```{r}
+sales_data_scl_train <- scale(sales_data_train[,-1])
+
+sales_data_train_new <- data.frame(cbind(EQ=sales_data$EQ,sales_data_scl_train))
+
+```
+
+
+
+#### Remove the outlier from the target variable "EQ" whose value is greater thne 1.5*IQR of "EQ"
+```{r}
+sales_data_train_latest <- sales_data_train[sales_data_train$EQ<=912,]
+```
+
+```{r}
+ggplot(data=sales_data_train_latest, aes(EQ, fill=EQ)) + geom_boxplot(colour="Black")
+
+```
+
+#### Split the train dataset into 70-30 ratio for Train and Test
+```{r}
+library(caTools)
+
+set.seed(777)
+
+spl = sample.split(sales_data_train_latest$EQ, SplitRatio = 0.7)
+
+train_data = subset(sales_data_train_latest, spl == TRUE)
+test_data = subset(sales_data_train_latest, spl == FALSE)
+
+
+```
+
+#### Build the Linear Regression Model on the train data
+```{r}
+lr_model <- lm(train_data$EQ ~ . , data = train_data, )
+
+print(lr_model)
+
+summary(lr_model)
+```
+We see that the Adjusted R-square of the model is 59% and RSE is 142.9
+
+#### Predict on test data using the built Linear Regression model
+```{r}
+
+test_data$Predict_EQ <- predict(lr_model,newdata=test_data)
+
+```
+
+#### Find the MAPE value of the model 
+```{r}
+#install.packages("MLmetrics")
+library(MLmetrics)
+
+MAPE(y_pred = test_data$Predict_EQ,y_true = test_data$EQ)
+
+```
+
+
+#### Scatter plot of the predicted values
+```{r}
+plot(test_data$Predict_EQ)
+```
+
+#### Show the variable Importance Plot of the Linear Regression Model
+```{r}
+
+library(caret)
+
+varimpplot <- as.data.frame(varImp(lr_model))
+
+varimpplot <- data.frame(overall = varimpplot$Overall,names = rownames(varimpplot))
+
+varimpplot[order(varimpplot$overall,decreasing = T),]
+
+```
+
+
+#### Build the correlation plot and see the correlation of the variables
+```{r}
+library(corrplot)
+
+sales_data_cor <- as.matrix(sales_data[,2:39])
+
+corplot <- corrplot(cor(sales_data_cor),type = "lower")
+
+
+```
+
+#### Based on the varible importance and seeing the significant varibales from the model which p-value are very low build the linear regression model again
+
+Important Variables :- 
+
+Median_Rainfall		
+Social_Search_Impressions		
+pct_PromoMarketDollars_Category		
+Inflation		
+EQ_Category		
+pct_PromoMarketDollars_Subcategory		
+EQ_Subcategory		
+Digital_Impressions		
+Est_ACV_Selling	
+
+
+```{r}
+
+lr_model_new <- lm(train_data$EQ ~ Median_Rainfall+Social_Search_Impressions+pct_PromoMarketDollars_Category+Inflation+EQ_Category+pct_PromoMarketDollars_Subcategory+EQ_Subcategory+Digital_Impressions+Est_ACV_Selling, data = train_data)
+
+print(lr_model_new)
+
+summary(lr_model_new)
+
+```
+
+
+#### Predict on testset using the above built Linear Regression model
+```{r}
+
+test_data$Predict_EQ <- NULL
+
+test_data$Predict_EQ <- predict(lr_model_new,newdata=test_data)
+
+```
+
+
+```{r}
+
+MAPE(y_pred = test_data$Predict_EQ,y_true = test_data$EQ)
+
+```
+
+
+#### Read the validation dataset given (Test-dataset-v1.xlsx)
+```{r}
+sales_data_test <- read_excel("F:/Saurav/Study/GL-Class/Hackathon/Uniliver/Test-dataset-v1.xlsx")
+
+head(sales_data_test)
+```
+
+#### Remove the Period column
+```{r}
+sales_data_test <- sales_data_test[,-1]
+```
+
+#### Predict on validation data using the built Final Linear Regression model
+```{r}
+
+Predict_LR_EQ <-predict(lr_model_new,newdata=sales_data_test)
+
+```
+
+#### Plot the predicted sales
+```{r}
+plot(Predict_LR_EQ)
+```
+
+#### Buid a Bayesian Model
+```{r}
+#install.packages("BAS")
+library(BAS)
+
+model_bays <- bas.lm(train_data$EQ ~ .,
+                     data = train_data,
+                     method = "MCMC",
+                     prior = "ZS-null",
+                     modelprior = uniform())
+
+```
+
+#### Show the summary of the Bayesian model
+```{r}
+summary(model_bays)
+```
+
+#### Based on the above Bayesian Model below are the important varibales based on the Probablity column. 
+We see that it's same significant varibales as we got from the Linear Regressio model.
+
+Median_Rainfall
+pct_PromoMarketDollars_Subcategory
+pct_PromoMarketDollars_Category
+Social_Search_Impressions
+EQ_Subcategory
+EQ_Category
+Inflation
+Digital_Impressions
+Est_ACV_Selling
+
+
+#### Predict the sales on the validation dataset using the above Bayesian Model
+```{r}
+
+Predict_bays_EQ <- predict(model_bays, sales_data_test, estimator="BMA", interval = "predict", se.fit=TRUE)
+
+```
+
+#### Find out the MAPE value of the Bayesian Model
+```{r}
+
+MAPE(y_pred = Predict_bays_EQ$Ybma,y_true = sales_data_test$EQ)
+
+```
+
+#### Dataframe for predicted values of Linear and bayesian Models
+```{r}
+
+actual_predicted_out <- data.frame(cbind(ActualEQ=sales_data_test$EQ,LR_Predited_EQ=Predict_LR_EQ,
+                                         Bayesian_predited_EQ=Predict_bays_EQ$Ybma))
+
+write.csv(actual_predicted_out,"acutal_predicted_out.csv")
+```
+
+
+## To forcast for the next 6 period on the validation dataset-
+
+#### Read the validation dataset
+```{r}
+
+sales_data_ts <- read_excel("F:/Saurav/Study/GL-Class/Hackathon/Uniliver/Test-dataset-v1.xlsx")
+
+head(sales_data_ts)
+```
+
+#### Filter the sales column to forcast
+```{r}
+
+sales_data_ts_new <- sales_data_ts[,2]
+
+head(sales_data_ts_new)
+
+```
+
+#### Create the time series dataframe
+```{r}
+
+sales_data.ts <- ts(sales_data_ts_new , start = c(2016,1) , end = c(2018,13) ,frequency = 13)
+
+sales_data.ts
+
+```
+
+#### Plot the time service dataframe
+```{r}
+library(forecast)
+plot(sales_data.ts)
+```
+#### Decompose the above time series df
+```{r}
+decompose(sales_data.ts)
+```
+
+#### Plot the above decompose data
+```{r}
+plot(decompose(sales_data.ts))
+```
+
+#### Plot the actual values of the decompose data
+```{r}
+plot(decompose(sales_data.ts)$x)
+```
+
+
+#### Plot the time series dataframe based on season
+```{r}
+seasonplot(sales_data.ts , col = rainbow(7))
+```
+
+
+#### Plot the seasonal sale using ggseasonalplot
+```{r}
+ggseasonplot(sales_data.ts , ylab="count" , main="Seasonal plot: Sales Data")
+```
+
+#### Split the data into train and test set to build multiplicative model
+```{r}
+
+# Split the data for train set
+
+sales_data.ts.train <- window(sales_data.ts , start = c(2016,1) , end = c(2017,13), frequency = 13)
+sales_data.ts.train
+
+```
+
+#### Split the data for test set
+```{r}
+
+
+sales_data.ts.test <- window(sales_data.ts , start = c(2018,1) , frequency = 13)
+
+sales_data.ts.test
+
+```
+
+
+#### Build the Holt Winter Model ( Multiplicative ) using train set
+```{r}
+
+hw.model.multi <- hw(sales_data.ts.train , seasonal = "m")
+
+summary(hw.model.multi)
+
+```
+
+#### Plot the above model
+```{r}
+plot(hw.model.multi)
+```
+
+#### Forecast using the train data for next 13 period using above model
+```{r}
+train.forecast.multi <- forecast(hw.model.multi , h=13)
+train.forecast.multi
+```
+
+#### Plot the above forecast
+```{r}
+plot(train.forecast.multi)
+```
+
+#### Find the forcasted value for each month.
+```{r}
+
+train.forecast.value <- train.forecast.multi$mean
+train.forecast.value
+
+```
+
+#### Actual Test Values
+```{r}
+test.actual.value <- sales_data.ts.test
+test.actual.value
+
+```
+
+#### Plot the actual and forcasted values
+```{r}
+
+plot(test.actual.value,train.forecast.value)
+
+```
+
+#### Accuracy measures: RMSE and MAPE using HOLT WINTER MODEL (MULTIPLICATIVE)
+```{r}
+
+Vec2 <- (cbind(test.actual.value,train.forecast.value))
+
+ts.plot(Vec2, col=c("blue", "red"), main="Sales: Actual vs Forecast")
+
+```
+
+Blue line denotes actual value and red denotes predicted values. Note that predicted values are somewhat lower than the actual observations.
+
+#### Find the RMSE and MAPE values
+```{r}
+RMSE2 <- round(sqrt(sum(((Vec2[,1]-Vec2[,2])^2)/length(Vec2[,1]))),4)
+MAPE2 <- round(mean(abs(Vec2[,1]-Vec2[,2])/Vec2[,1]),4) * 100
+paste("Accuracy Measures: RMSE:", RMSE2, "and MAPE:", MAPE2)
+```
+
+#### Build the Holt Winter Model ( Multiplicative ) on the full validation data
+```{r}
+
+hw.model.multi_full <- hw(sales_data.ts , seasonal = "m")
+
+summary(hw.model.multi_full)
+
+```
+
+#### Plot the above model
+```{r}
+plot(hw.model.multi_full)
+```
+
+#### Forecast using the train data for next 6 period using above model
+```{r}
+train.forecast.multi_full <- forecast(hw.model.multi_full , h=13)
+train.forecast.multi_full
+```
+
+```{r}
+summary(train.forecast.multi_full)
+```
+
+```{r}
+plot(train.forecast.multi_full)
+```
+
+### GET THE ACTUAL SALES VALUES FOR NEXT 6 PERIOD UDING HOLT WINTER MODEL
+```{r}
+
+forecast(train.forecast.multi_full, h=6)$mean
+
+```
+
+
+#### CHECK FOR STATIONARY
+
+```{r}
+library(tseries)
+diff1 <- diff(sales_data.ts , lag = 13)
+
+adf.test(diff1)
+
+plot.ts(diff1)
+
+```
+
+#### Lets do the adf test on difference in sales
+
+```{r}
+diff2 <- diff(diff1 , lag = 1)
+
+adf.test(diff2)
+
+plot.ts(diff2)
+```
+p = 0.01 , Reject null hythesis - So series is stationary
+We also see the plot has become stationary.
+
+
+#### Build the ARIMA Model on the full validation dataset using auto.arima function
+```{r}
+auto.arima.model <- auto.arima(sales_data.ts)
+auto.arima.model
+```
+
+```{r}
+summary(auto.arima.model)
+```
+
+
+### Forecast for the next 6 period using ARIMA MODEL
+```{r}
+
+arima.forecast <- forecast(auto.arima.model , h=6)
+arima.forecast
+
+```
+
+#### Plot the next Six period forecast
+```{r}
+plot(arima.forecast)
+```
+
+### GET THE ACTUAL SALES VALUES FOR NEXT 6 PERIOD USING ARIMA MODEL
+```{r}
+
+forecast(arima.forecast, h=6)$mean
+
+```
+
+
+#### Read the validation dataset
+```{r}
+library(readxl)
+sales_data_ts <- read_excel("F:/Saurav/Study/GL-Class/Hackathon/Uniliver/Test-dataset-v1.xlsx")
+
+head(sales_data_ts)
+
+```
+
+
+#### Build the dataframe with all the significant predictor variabled and sales(EQ) and Period
+```{r}
+
+sales_data_signif <- cbind.data.frame(Period=sales_data_ts$Period,
+                                      EQ=sales_data_ts$EQ,
+                                      Medium_rainfall=sales_data_ts$Median_Rainfall,
+                                        Social_Search_Impressions=sales_data_ts$Social_Search_Impressions,
+                                        pct_PromoMarketDollars_Category=sales_data_ts$pct_PromoMarketDollars_Category,
+                                      Inflation=sales_data_ts$Inflation,
+                                        EQ_Category=sales_data_ts$EQ_Category,
+                                    pct_PromoMarketDollars_Subcategory=sales_data_ts$pct_PromoMarketDollars_Subcategory,
+                                        EQ_Subcategory=sales_data_ts$EQ_Subcategory,
+                                        Digital_Impressions=sales_data_ts$Digital_Impressions,
+                                        Est_ACV_Selling=sales_data_ts$Est_ACV_Selling,stringsAsFactors = FALSE)
+                          
+                                      
+```
+
+```{r}
+head(sales_data_signif)
+```
+
+```{r}
+str(sales_data_signif)
+```
+
+
+####  Build LM model with time series
+```{r}
+
+#install.packages("fpp2")
+
+library(fpp2)
+
+names(sales_data_signif)
+
+```
+
+#### Build the time series data using the above variables
+```{r}
+
+sales.ts <- ts(sales_data_signif[,c(2:11)],start = c(2016,1), end = c(2018,13) , frequency = 13)
+
+```
+
+```{r}
+head(sales.ts)
+```
+
+```{r}
+
+plot(sales.ts[,1])
+
+```
+
+```{r}
+
+auto.arima(sales.ts[,1],xreg = sales.ts[,c(2,3)])
+
+```
+
+```{r}
+summary(auto.arima(sales.ts[,1],xreg = sales.ts[,c(2,3)]))
+```
+
+```{r}
+summary(auto.arima(sales.ts[,1],xreg = sales.ts[,c(2:4)]))
+```
+
+
+```{r}
+summary(auto.arima(sales.ts[,1],xreg = sales.ts[,c(2:6)]))
+```
+
+
+```{r}
+summary(auto.arima(sales.ts[,1],xreg = sales.ts[,c(2:10)]))
+```
+
+
+```{r}
+summary(hw(sales.ts[,1]))
+```
+
+```{r}
+summary(tslm(EQ ~ Medium_rainfall+Social_Search_Impressions, data = sales.ts))
+```
+
+```{r}
+summary(tslm(EQ ~ trend+season, data = sales.ts))
+```
+
+#### Build the ARIMAX model
+```{r}
+
+#attach(sales_data_signif)
+
+tslm_model <- tslm(EQ ~ trend+season+Medium_rainfall+Social_Search_Impressions+pct_PromoMarketDollars_Category+
+                     Inflation+EQ_Category+pct_PromoMarketDollars_Subcategory+EQ_Subcategory+
+                     Digital_Impressions+Est_ACV_Selling, data = sales.ts)
+
+summary(tslm_model)
+
+```
+We see that Adjusted R-sqaure = 94% and RSE = 2.72
+
+```{r}
+tsml_lm_model <- lm(EQ ~ Medium_rainfall+Social_Search_Impressions+pct_PromoMarketDollars_Category+
+                     Inflation+EQ_Category+pct_PromoMarketDollars_Subcategory+EQ_Subcategory+
+                     Digital_Impressions+Est_ACV_Selling, data = sales.ts)
+```
+
+```{r}
+predict(tsml_lm_model)
+```
+
+#### Forecast for the next 6 Period using the ARIMAX model
+```{r}
+forecast(tslm_model$x,h=6)
+
+```
+
+```{r}
+forecast(tslm_model$x,h=6)$mean
+
+```
+
+#### Plot the forecast for next 6 Period
+```{r}
+plot(forecast(tslm_model$x,h=6))
+```
+
